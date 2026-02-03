@@ -21,6 +21,9 @@
 **/*.db-shm
 **/*.db-wal
 
+# BUT track sample db
+!**/*.sample.db
+
 # ===== Node / React =====
 **/node_modules/
 **/dist/

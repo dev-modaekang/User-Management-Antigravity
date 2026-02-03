@@ -2,14 +2,25 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getUsers, deleteUser } from '../api';
 import type { User } from '../api';
-import { Plus, Trash2, Search, User as UserIcon } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Plus, Trash2, Search, User as UserIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+
+const ITEMS_PER_PAGE = 10;
 
 const MainPage: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
     const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
     const [search, setSearch] = useState('');
     const [selectedId, setSelectedId] = useState<number | null>(null);
+    const [currentPage, setCurrentPage] = useState(1);
     const navigate = useNavigate();
+    const { user: currentUser } = useAuth();
+
+    // Admin: All access.
+    // Technician: View, Edit, Delete, Create (Requested update).
+    // User: Blocked at App level, but read-only here as safeguard.
+    const canCreate = currentUser?.role === 'Admin' || currentUser?.role === 'Technician';
+    const canManage = currentUser?.role === 'Admin' || currentUser?.role === 'Technician';
 
     useEffect(() => {
         loadUsers();
@@ -26,25 +37,45 @@ const MainPage: React.FC = () => {
     };
 
     useEffect(() => {
-        if (!search) {
-            setFilteredUsers(users);
-        } else {
+        let results = users;
+        if (search) {
             const lower = search.toLowerCase();
-            setFilteredUsers(users.filter(u =>
+            results = users.filter(u =>
                 u.firstName.toLowerCase().includes(lower) ||
                 u.lastName.toLowerCase().includes(lower) ||
                 u.email.toLowerCase().includes(lower)
-            ));
+            );
         }
+        setFilteredUsers(results);
+        setCurrentPage(1); // Reset to first page on search
     }, [search, users]);
 
+    const totalPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE);
+    const paginatedUsers = filteredUsers.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE
+    );
+
     const handleDelete = async () => {
+        if (!canManage) return;
         if (selectedId) {
-            if (confirm('Are you sure you want to delete this user?')) {
+            if (window.confirm('Are you sure you want to delete this user?')) {
                 await deleteUser(selectedId);
                 loadUsers();
                 setSelectedId(null);
             }
+        }
+    };
+
+    const handleRowClick = (id: number) => {
+        if (canManage) {
+            setSelectedId(id);
+        }
+    };
+
+    const handleRowDoubleClick = (id: number) => {
+        if (canManage) {
+            navigate(`/modify/${id}`);
         }
     };
 
@@ -63,9 +94,11 @@ const MainPage: React.FC = () => {
                             onChange={(e) => setSearch(e.target.value)}
                         />
                     </div>
-                    <button className="btn btn-primary" onClick={() => navigate('/add')}>
-                        <Plus size={18} /> Add User
-                    </button>
+                    {canCreate && (
+                        <button className="btn btn-primary" onClick={() => navigate('/add')}>
+                            <Plus size={18} /> Add User
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -82,12 +115,13 @@ const MainPage: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {filteredUsers.length > 0 ? filteredUsers.map(user => (
+                        {paginatedUsers.length > 0 ? paginatedUsers.map(user => (
                             <tr
                                 key={user.id}
                                 className={selectedId === user.id ? 'selected' : ''}
-                                onClick={() => setSelectedId(user.id!)}
-                                onDoubleClick={() => navigate(`/modify/${user.id}`)}
+                                onClick={() => handleRowClick(user.id!)}
+                                onDoubleClick={() => handleRowDoubleClick(user.id!)}
+                                style={{ cursor: canManage ? 'pointer' : 'default' }}
                             >
                                 <td><div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><UserIcon size={16} /> {user.firstName} {user.lastName}</div></td>
                                 <td>{user.email}</td>
@@ -95,9 +129,9 @@ const MainPage: React.FC = () => {
                                     padding: '2px 8px',
                                     borderRadius: '12px',
                                     fontSize: '0.75rem',
-                                    background: user.accountType === 'User' ? '#eff6ff' : '#f0fdf4',
-                                    color: user.accountType === 'User' ? '#1d4ed8' : '#15803d'
-                                }}>{user.accountType}</span></td>
+                                    background: user.role === 'Admin' ? '#fef2f2' : user.role === 'Technician' ? '#fff7ed' : '#f0fdf4',
+                                    color: user.role === 'Admin' ? '#b91c1c' : user.role === 'Technician' ? '#c2410c' : '#15803d'
+                                }}>{user.role}</span></td>
                                 <td><span style={{ color: user.userStatus === 'Active' ? '#16a34a' : '#94a3b8' }}>● {user.userStatus}</span></td>
                                 <td>{user.department}</td>
                                 <td>{user.managerName || '-'}</td>
@@ -109,9 +143,31 @@ const MainPage: React.FC = () => {
                         )}
                     </tbody>
                 </table>
+
+                {totalPages > 1 && (
+                    <div className="pagination">
+                        <button
+                            className="btn btn-outline btn-sm"
+                            disabled={currentPage === 1}
+                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        >
+                            <ChevronLeft size={16} /> Prev
+                        </button>
+                        <span className="page-info">
+                            Page <strong>{currentPage}</strong> of {totalPages}
+                        </span>
+                        <button
+                            className="btn btn-outline btn-sm"
+                            disabled={currentPage === totalPages}
+                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        >
+                            Next <ChevronRight size={16} />
+                        </button>
+                    </div>
+                )}
             </div>
 
-            {selectedId && (
+            {selectedId && canManage && (
                 <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', animation: 'fadeIn 0.3s' }}>
                     <button className="btn btn-danger" onClick={handleDelete} style={{ padding: '0.75rem 1.5rem', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}>
                         <Trash2 size={18} /> Delete Selected User

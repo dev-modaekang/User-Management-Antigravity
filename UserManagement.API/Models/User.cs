@@ -17,5 +17,10 @@ namespace UserManagement.API.Models
         public string? Description { get; set; }
         public string? ManagerName { get; set; }
         public required string Department { get; set; }
+
+        public string Role { get; set; } = "User"; // Admin, Technician, User
+
+        // Navigation property for Many-to-Many
+        public ICollection<Group> Groups { get; set; } = new List<Group>();
     }
 }
